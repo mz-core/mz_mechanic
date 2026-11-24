@@ -5,7 +5,7 @@ lua54 'yes'
 name 'mz_mechanic'
 author 'Mazus / MZ Framework'
 description 'Server-authoritative instant workshop, mechanic duty and vehicle service flow'
-version '0.1.0'
+version '0.1.2'
 
 shared_scripts {
   '@ox_lib/init.lua',

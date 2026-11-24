@@ -12,7 +12,7 @@ local tuningHudSuppressed = false
 
 local serviceErrors = {
   customer_not_player_owner = 'Este veículo não possui um proprietário jogador para aprovar o serviço.',
-  customer_offline = 'O proprietário precisa estar online e presente na oficina.',
+  customer_offline = 'O proprietário precisa estar online e perto do veículo.',
   service_in_progress = 'Este veículo já possui um atendimento em andamento.',
   vehicle_not_damaged = 'Este veículo não precisa de reparo estrutural.',
   payment_failed = 'A cobrança foi recusada.',

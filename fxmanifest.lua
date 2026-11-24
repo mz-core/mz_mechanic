@@ -15,6 +15,7 @@ shared_scripts {
 
 client_scripts {
   'client/main.lua',
+  'client/interact.lua',
   'client/target.lua',
   'client/radialmenu.lua'
 }

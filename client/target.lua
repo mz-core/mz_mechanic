@@ -5,9 +5,9 @@ local function validVehicle(entity)
   return MZMechanicClient.GetVehicleNetId(entity) > 0
 end
 
-local function inTuningBay(entity)
+local function canRepair(entity)
   if not validVehicle(entity) then return false end
-  return MZMechanicClient.GetTuningBay(entity) ~= nil and GetEntitySpeed(entity) <= 0.1
+  return MZMechanicClient.HasFieldDuty() and GetEntitySpeed(entity) <= 0.1
 end
 
 local function registerTarget()
@@ -19,7 +19,7 @@ local function registerTarget()
         label = repairLabel,
         icon = 'wrench',
         distance = 3.0,
-        canInteract = inTuningBay,
+        canInteract = canRepair,
         action = function(entity) MZMechanicClient.RequestRepair(entity) end
       }
     }
@@ -41,7 +41,7 @@ end
 local function markerLoop()
   while true do
     local sleep = 750
-    if not MZMechanicClient.IsOpen() then
+    if GetResourceState('mz_interact') ~= 'started' and not MZMechanicClient.IsOpen() then
       local playerCoords = GetEntityCoords(PlayerPedId())
       for _, workshop in pairs(MZMechanicConfig.Workshops or {}) do
         local tuning = workshop.tuning

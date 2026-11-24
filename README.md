@@ -14,9 +14,9 @@ Oficina server-authoritative do MZ Framework. A Wave M1 entrega vínculo e duty 
 
 ## Experiências da oficina
 
-- **Mecânica física:** o `mz_mechanic` registra no `mz_target` a entrada “Diagnóstico e ordem de serviço” sobre veículos networked. O contexto/diagnóstico aceita o veículo próximo selecionado mesmo fora da baia; a criação e execução da OS continuam exigindo uma vaga configurada, orçamento, consentimento e cobrança.
+- **Reparo:** o mecânico com ponto batido pode solicitar reparo em um veículo parado, dentro ou fora da oficina, pelo `mz_interact` ou `mz_target`. O proprietário precisa estar online e próximo para aprovar o orçamento; autorização, distância e veículo são revalidados antes da execução e cobrança.
 - **Atendimento:** painel compacto para duty, diagnóstico, OS, orçamento, aprovação, execução e reconciliação.
-- **MZ Automotive:** interface de tuning independente, aberta pelo target apenas para veículo parado em vaga configurada. Sem OS, o catálogo compatível fica disponível somente para consulta; preview, orçamento e persistência continuam protegidos pela OS e pelos callbacks financeiros.
+- **MZ Automotive:** interface de tuning independente, aberta pelo `mz_interact` na baia configurada para um veículo parado. Preview, orçamento e persistência continuam protegidos pelos callbacks do servidor.
 
 Não existem ainda reparos separados de motor, carroceria ou pneus. Eles não são apresentados no target porque o backend atual só autoriza `full_repair`. `mz_inventory` também não possui definições canônicas de ferramentas mecânicas nesta baseline.
 
@@ -28,7 +28,7 @@ Não existem ainda reparos separados de motor, carroceria ou pneus. Eles não s�
 4. Adicione `ensure mz_mechanic` na configuração do servidor manualmente.
 5. Cadastre o personagem na organização `mechanic` com `mechanic.repair.basic`; o duty é o canônico de `mz_org`.
 
-`mz_target` e `mz_radialmenu` são integrações opcionais descobertas em runtime. O target preserva a entidade exata; radial e `mzmechanic`/F7 fazem uma busca única pelo veículo networked mais próximo e, se nenhum existir, mantêm o Atendimento administrativo sem veículo. O blip “MZ Automotive” indica localização e não concede autorização nem abre a NUI automaticamente.
+`mz_interact`, `mz_target` e `mz_radialmenu` são integrações opcionais descobertas em runtime. Sem `mz_interact`, a baia de tuning mantém o marcador anterior. O blip “MZ Automotive” indica localização e não concede autorização nem abre a NUI automaticamente.
 
 ## Fluxo M1
 

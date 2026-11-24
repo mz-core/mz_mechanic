@@ -1,6 +1,7 @@
 local callbacks = {
   ['mz_mechanic:server:getContext'] = MZMechanicService.GetContext,
   ['mz_mechanic:server:requestRepair'] = MZMechanicService.RequestRepair,
+  ['mz_mechanic:server:fieldRepairStatus'] = MZMechanicService.GetFieldRepairStatus,
   ['mz_mechanic:server:beginCustomization'] = MZMechanicService.BeginCustomization,
   ['mz_mechanic:server:quoteCustomization'] = MZMechanicService.QuoteCustomization,
   ['mz_mechanic:server:toggleDuty'] = MZMechanicService.ToggleDuty,

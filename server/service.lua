@@ -208,7 +208,7 @@ local function requireReady()
   return true
 end
 
-local function resolveContext(source, workshopCode, requestId)
+local function resolveContext(source, workshopCode, requestId, allowRemote)
   local identity, identityErr = Adapters.ResolveIdentity(source, requestId)
   if not identity then return nil, identityErr, 'identity' end
   KnownIdentities[source] = identity.citizenid
@@ -217,7 +217,7 @@ local function resolveContext(source, workshopCode, requestId)
   local workshop = workshopCode and workshopByCode(workshopCode) or workshopAt(coords)
   if not workshop then return nil, 'not_at_workshop', 'workshop' end
   workshop.code = workshopCode or workshop.code
-  if distance(coords, workshop.coords) > (tonumber(workshop.radius) or 30.0) then return nil, 'too_far', 'workshop' end
+  if not allowRemote and distance(coords, workshop.coords) > (tonumber(workshop.radius) or 30.0) then return nil, 'too_far', 'workshop' end
   return { source = source, identity = identity, coords = coords, workshop = workshop }
 end
 
@@ -255,6 +255,30 @@ local function requireMechanic(source, workshopCode)
   if mechanic.onDuty ~= true then return nil, 'not_on_duty' end
   context.mechanic = mechanic
   return context
+end
+
+local function requireFieldMechanic(source, workshopCode)
+  local first = workshopCode or next(MZMechanicConfig.Workshops or {})
+  if not first then return nil, 'not_mechanic' end
+  local context, err = resolveContext(source, first, nil, true)
+  if not context then return nil, err end
+  local sawOffDuty = false
+  for code, workshop in pairs(MZMechanicConfig.Workshops or {}) do
+    if not workshopCode or code == workshopCode then
+      workshop.code = code
+      context.workshop = workshop
+      local mechanic = mechanicStatus(source, context)
+      if mechanic.linked and mechanic.rawDuty then context.mechanic = mechanic; return context end
+      if mechanic.linked then sawOffDuty = true end
+    end
+  end
+  return nil, sawOffDuty and 'not_on_duty' or 'not_mechanic'
+end
+
+function Service.GetFieldRepairStatus(source)
+  if MZMechanicConfig.Enabled ~= true then return { ok = true, available = false } end
+  local context = requireFieldMechanic(source)
+  return { ok = true, available = context ~= nil }
 end
 
 local function transition(order, action, intent, actor, toState, patch, eventPayload, operationKey)
@@ -829,7 +853,7 @@ local function instantCustomer(vehicle)
   return source, citizenid
 end
 
-local function validateInstantVehicle(context, netId, expected)
+local function validateInstantVehicle(context, netId, expected, fieldRepair)
   local vehicle, vehicleErr = Adapters.ResolveVehicle(netId)
   if not vehicle then return nil, vehicleErr end
   if expected and (vehicle.id ~= expected.vehicleId or vehicle.plate ~= expected.plate) then
@@ -838,7 +862,7 @@ local function validateInstantVehicle(context, netId, expected)
   if vehicle.bucket ~= GetPlayerRoutingBucket(context.source) then return nil, 'routing_bucket_mismatch' end
   if distance(context.coords, vehicle.coords) > MZMechanicConfig.Order.InteractionDistance then return nil, 'too_far_from_vehicle' end
   local bay = bayForVehicle(context.workshop, vehicle.coords)
-  if not bay then return nil, 'vehicle_not_in_bay' end
+  if not fieldRepair and not bay then return nil, 'vehicle_not_in_bay' end
   if (tonumber(vehicle.speed) or 0) > 0.1 then return nil, 'vehicle_not_stopped' end
   if vehicle.state ~= 'out' then return nil, 'vehicle_not_out' end
   return vehicle, bay
@@ -865,7 +889,7 @@ local function newInstantService(context, vehicle, bay, kind, requestKey)
     status = 'preview',
     requestKey = requestKey,
     workshopCode = context.workshop.code,
-    bayCode = bay.code,
+    bayCode = bay and bay.code or nil,
     vehicleId = vehicle.id,
     netId = vehicle.netId,
     plate = vehicle.plate,
@@ -940,11 +964,13 @@ function Service.QuoteCustomization(source, raw)
 end
 
 function Service.RequestRepair(source, raw)
+  local ready, readyErr = requireReady()
+  if not ready then return { ok = false, error = readyErr } end
   local intent, intentErr = Contracts.ValidateIntent('requestRepair', raw)
   if not intent then return { ok = false, error = intentErr } end
-  local context, contextErr = requireMechanic(source)
+  local context, contextErr = requireFieldMechanic(source)
   if not context then return { ok = false, error = contextErr } end
-  local vehicle, bayOrErr = validateInstantVehicle(context, intent.netId)
+  local vehicle, bayOrErr = validateInstantVehicle(context, intent.netId, nil, true)
   if not vehicle then return { ok = false, error = bayOrErr } end
   local diagnostic = { engine = math.floor(vehicle.engine), body = math.floor(vehicle.body), dirt = vehicle.dirt, capturedAt = os.time() }
   local quote = Contracts.CalculateQuote(diagnostic, MZMechanicConfig.Services)
@@ -960,16 +986,19 @@ function Service.AcceptQuote(source, raw)
   if not intent then return { ok = false, error = intentErr } end
   local service = InstantServices[intent.orderId]
   if not service or service.status ~= 'quoted' or GetGameTimer() > service.expiresAt then return { ok = false, error = 'service_expired' } end
-  local customer, customerErr = resolveContext(source, service.workshopCode)
+  local isRepair = service.kind == 'repair'
+  local customer, customerErr = resolveContext(source, service.workshopCode, nil, isRepair)
   if not customer then return { ok = false, error = customerErr } end
   if customer.identity.citizenid ~= service.customerCitizenId then return { ok = false, error = 'not_order_customer' } end
-  local customerVehicle, vehicleErr = validateInstantVehicle(customer, service.netId, service)
+  local customerVehicle, vehicleErr = validateInstantVehicle(customer, service.netId, service, isRepair)
   if not customerVehicle then return { ok = false, error = vehicleErr } end
   local access, accessErr = Adapters.CanAccessVehicle(source, customerVehicle.plate)
   if access ~= true then return { ok = false, error = accessErr or 'vehicle_access_denied' } end
-  local mechanic, mechanicErr = requireMechanic(service.mechanicSource, service.workshopCode)
+  local mechanic, mechanicErr
+  if isRepair then mechanic, mechanicErr = requireFieldMechanic(service.mechanicSource, service.workshopCode)
+  else mechanic, mechanicErr = requireMechanic(service.mechanicSource, service.workshopCode) end
   if not mechanic then return { ok = false, error = mechanicErr or 'mechanic_unavailable' } end
-  local mechanicVehicle, mechanicVehicleErr = validateInstantVehicle(mechanic, service.netId, service)
+  local mechanicVehicle, mechanicVehicleErr = validateInstantVehicle(mechanic, service.netId, service, isRepair)
   if not mechanicVehicle then return { ok = false, error = mechanicVehicleErr } end
   local amount = math.floor(tonumber(service.quote and service.quote.total) or 0)
   if amount <= 0 then return { ok = false, error = 'invalid_server_quote' } end
@@ -1008,9 +1037,14 @@ function Service.ConfirmApply(source, raw)
   local service = InstantServices[intent.orderId]
   if not service or service.status ~= 'applying' or service.mechanicSource ~= source then return { ok = false, error = 'apply_not_authorized' } end
   if service.applyToken ~= intent.token or service.netId ~= intent.netId then return { ok = false, error = 'invalid_apply_token' } end
-  local context, contextErr = requireMechanic(source, service.workshopCode)
-  if not context then return { ok = false, error = contextErr } end
-  local vehicle, vehicleErr = validateInstantVehicle(context, intent.netId, service)
+  local context, contextErr
+  if service.kind == 'repair' then context, contextErr = requireFieldMechanic(source, service.workshopCode)
+  else context, contextErr = requireMechanic(source, service.workshopCode) end
+  if not context then
+    InstantServices[service.id] = nil
+    return { ok = false, error = contextErr, rollback = true }
+  end
+  local vehicle, vehicleErr = validateInstantVehicle(context, intent.netId, service, service.kind == 'repair')
   if not vehicle then
     InstantServices[service.id] = nil
     return { ok = false, error = vehicleErr, rollback = true }
